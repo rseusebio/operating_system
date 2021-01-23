@@ -3,11 +3,14 @@ simulator:
     process_config:
     {
         limit: 10;
+        quantity: 3;
         processes:
         (
             {
-                qnt: 3;
-                instructions: (
+                qnt: 4;
+                start_after: 2; 
+                instructions: 
+                (
                     {
                         type: "CPU",
                         time: 8,
@@ -23,9 +26,11 @@ simulator:
                         type: "MAGNETIC_TAPE"
                     }
                 );
-                start_after: 10; 
+                
             },
             {
+                qnt: 3;
+                start_after: 0;
                 instructions: 
                 (
                     {
@@ -40,9 +45,10 @@ simulator:
                         time: 10
                     }
                 );
-                start_after: 30;
             },
-            {
+            {   
+                qnt: 3;
+                start_after: 0;
                 instructions:
                 (
                     { 
@@ -57,7 +63,7 @@ simulator:
                         time: 20
                     }
                 );
-                start_after: 5;
+                
             }
         );
     };

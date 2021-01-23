@@ -82,6 +82,66 @@ struct PCB          **terminated_queue;
 int                 terminated_pointer;
 pthread_mutex_t     terminated_lock;
 
+char * status_name( enum Status status_code )
+{
+    switch( status_code )
+    {
+        case NEW:
+        {
+            return "NEW";
+        }
+        case READY:
+        {
+            return "READY";
+        }
+        case RUNNING:
+        {
+            return "RUNNING";
+        }
+        case WAITING:
+        {
+            return "WAITING";
+        }
+        case TERMINATED:
+        {
+            return "TERMINATED";
+        }
+        default:
+        {
+            printf( "Invalid status_code: %d.\n", status_code );
+            exit( -1 );
+        }
+    }
+}
+
+char * instruction_type( enum InstructionType instruction_type )
+{
+    switch( instruction_type )
+    {
+        case CPU:
+        {
+            return "CPU";
+        }
+        case PRINTER:
+        {
+            return "PRINTER";
+        }
+        case DISK:
+        {
+            return "DISK";
+        }
+        case MAGNETIC_TAPE:
+        {
+            return "MAGNETIC_TAPE";
+        }
+        default:
+        {
+            printf( "Invalid status_code: %d.\n", instruction_type );
+            exit( -1 );
+        }
+    }
+}
+
 void print_instructions( struct Instruction *instructions, int qnt )
 {
     printf( "\tinstructions: [ " );
@@ -89,7 +149,7 @@ void print_instructions( struct Instruction *instructions, int qnt )
     for( int i = 0; i < qnt; i++ )
     {
         struct Instruction *inst = instructions + i;
-        printf( "( type: %d, time: %d ), ", inst->type, inst->time );
+        printf( "( %s, %d ), ", instruction_type( inst->type ), inst->time );
     }
 
     printf( " ]\n" );
@@ -100,7 +160,7 @@ void print_process_control_block( struct PCB *pcb )
     printf( "{\n" );
     printf( "\tPID: %d\n", pcb->PID );
     printf( "\tPC: %d\n",  pcb->PC );
-    printf( "\tstatus: %d\n",  pcb->status );
+    printf( "\tstatus: %s\n",  status_name( pcb->status ) );
     printf( "\tinstruction_qnt: %d\n",  pcb->instruction_qnt );
 
     print_instructions( pcb->instructions, pcb->instruction_qnt );
@@ -150,6 +210,17 @@ void init_simluator( char *config_file_path )
         exit( -1 );
     }
 
+    if( config_setting_lookup_int( process_config, "quantity", &PROCESS_QUANTITY ) < 0)
+    {   
+        printf( "Could not read process limit.\n" );
+        exit( -1 );
+    }
+    else if( PROCESSES_LIMIT <= 0 )
+    {
+        printf( "Invalid process quantity: %d. It should be a positive integer value.\n", PROCESS_QUANTITY );
+        exit( -1 );
+    }
+
     processes_list = malloc( PROCESSES_LIMIT * sizeof( struct PCB ) );
 
     if( pthread_mutex_init( &processes_lock, NULL ) != 0 )
@@ -164,13 +235,8 @@ void init_simluator( char *config_file_path )
         printf( "Could not read process list.\n" );
         exit( -1 );
     }
-
-    PROCESS_QUANTITY = 0;
-
-    const char *type;
-    int time, instruction_qnt, start_after;
-
-    for( int i = 0; i < PROCESSES_LIMIT; i++ )
+    
+    for( int i = 0; i < PROCESS_QUANTITY; i++ )
     {
         struct PCB* pcb = processes_list + i;
 
@@ -181,37 +247,33 @@ void init_simluator( char *config_file_path )
         process = config_setting_get_elem( list_config, i );
         if( process == NULL )
         {
-            printf( "Loaded %d processes. Now shutting down...\n", i );
-            break;
+            printf( "Could not loaded process no. %d.\n", i + 1 );
+            exit( -1 );
         }
 
-        PROCESS_QUANTITY++;
-
-        if( config_setting_lookup_int( process, "qnt", &instruction_qnt ) < 0)
+        if( config_setting_lookup_int( process, "qnt", &( pcb->instruction_qnt ) ) < 0 )
         {
             printf( "Could not read quantity of instruction of %d process.\n", i + 1 );
             exit( -1 );
         }
-        else if( instruction_qnt <= 0 )
+        else if( pcb->instruction_qnt <= 0 )
         {
-            printf( "Invalid quantity of instructions: %d. Should be greater or equal to 1.", instruction_qnt );
+            printf( "Invalid quantity of instructions: %d. Should be greater or equal to 1.", pcb->instruction_qnt );
             exit( -1 );
         }
 
-        if( config_setting_lookup_int( process, "start_after", &start_after ) < 0)
+        if( config_setting_lookup_int( process, "start_after", &( pcb->start_after ) ) < 0 )
         {
             printf( "Could not read start_after of %d process.\n", i + 1 );
             exit( -1 );
         }
-        else if( start_after < 0 )
+        else if( pcb->start_after < 0 )
         {
-            printf( "Invalid start_after value: %d. Should be greater or equal to 0.", start_after );
+            printf( "Invalid start_after value: %d. Should be greater or equal to 0.", pcb->start_after );
             exit( -1 );
         }
 
-        pcb->start_after        =   start_after;
-        pcb->instruction_qnt    =   instruction_qnt;
-        pcb->instructions       =   malloc( instruction_qnt * sizeof( struct Instruction ) );
+        pcb->instructions = malloc( pcb->instruction_qnt * sizeof( struct Instruction ) );
 
         process_instructions = config_setting_get_member( process, "instructions" );
         if( process_instructions == NULL )
@@ -220,18 +282,20 @@ void init_simluator( char *config_file_path )
             exit( -1 );
         }
         
-        for( int j = 0; j < instruction_qnt; j++ )
+        for( int j = 0; j < pcb->instruction_qnt; j++ )
         {
+            const char *type;
+ 
             struct Instruction *inst = pcb->instructions + j;
 
             config_setting_t *instruction = config_setting_get_elem( process_instructions, j );
             if( instruction == NULL )
             {
-                printf( "Couldn't find instruction n.%d from process %d.\n", j+1, i+1 );
+                printf( "Couldn't find instruction n.%d of process %d.\n", j + 1, i + 1 );
                 exit( -1 );
             }
 
-            if( config_setting_lookup_string( instruction, "type", &type) < 0)
+            if( config_setting_lookup_string( instruction, "type", &type ) < 0)
             {
                 printf( "Couldn't read field type from process %d.\n", i+1 );
                 exit( -1 ); 
@@ -256,18 +320,16 @@ void init_simluator( char *config_file_path )
             {
                 inst->type = CPU;
 
-                if( config_setting_lookup_int( instruction, "time", &time) < 0)
+                if( config_setting_lookup_int( instruction, "time", &inst->time) < 0)
                 {
                     printf( "Couldn't read field time from process %d.\n", i+1 );
                     exit( -1 ); 
                 }
-                else if( time <= 0 )
+                else if( inst->time <= 0 )
                 {
-                    printf( "Invalid time value: %d. Should be greater or equal to 1.", time );
+                    printf( "Invalid time value: %d. Should be greater or equal to 1.", inst->time );
                     exit( -1 );
                 }
-
-                inst->time = time;
             }
             else
             {
@@ -275,8 +337,6 @@ void init_simluator( char *config_file_path )
                 exit( -1 );
             }
         }
-
-        print_process_control_block( pcb );
     }
     #pragma endregion
 
@@ -326,7 +386,7 @@ void init_simluator( char *config_file_path )
 
     #pragma region CREATING I/O QUEUES
 
-    printer_queue         = malloc( PROCESSES_LIMIT * sizeof( struct PCB * ) );
+    printer_queue         = malloc( PROCESS_QUANTITY * sizeof( struct PCB * ) );
     printer_queue_pointer = 0;
     if( pthread_mutex_init( &printer_lock, NULL ) != 0 )
     {   
@@ -334,7 +394,7 @@ void init_simluator( char *config_file_path )
         exit( -1 );
     }
 
-    magnetic_tape_queue   = malloc( PROCESSES_LIMIT * sizeof( struct PCB *)  );
+    magnetic_tape_queue   = malloc( PROCESS_QUANTITY * sizeof( struct PCB *)  );
     magnetic_tape_pointer = 0;
     if( pthread_mutex_init( &magnetic_tape_lock, NULL ) != 0 )
     {   
@@ -342,7 +402,7 @@ void init_simluator( char *config_file_path )
         exit( -1 );
     }
 
-    disk_queue         = malloc( PROCESSES_LIMIT * sizeof( struct PCB * ) );
+    disk_queue         = malloc( PROCESS_QUANTITY * sizeof( struct PCB * ) );
     disk_queue_pointer = 0;
     if( pthread_mutex_init( &disk_lock, NULL ) != 0 )
     {   
@@ -391,7 +451,7 @@ void init_simluator( char *config_file_path )
 
         int *rq_quantum = quantum_time_lists + i;
 
-        ready_queue = malloc( PROCESSES_LIMIT * sizeof( struct PCB * ) );
+        ready_queue = malloc( PROCESS_QUANTITY * sizeof( struct PCB * ) );
 
         ready_pointers[ i ] = 0;
 
@@ -424,7 +484,7 @@ void init_simluator( char *config_file_path )
 
     #pragma region  CREATING TERMINATED QUEUE
 
-    terminated_queue    = malloc( PROCESSES_LIMIT * sizeof( struct PCB * ) );
+    terminated_queue    = malloc( PROCESS_QUANTITY * sizeof( struct PCB * ) );
     terminated_pointer  = 0;
 
     if( pthread_mutex_init( &terminated_lock, NULL ) != 0 )
@@ -436,6 +496,22 @@ void init_simluator( char *config_file_path )
     #pragma endregion
     
     printf( "Configuration has ended.\n" );
+}
+
+void print_configuration( ) 
+{
+    for( int i = 0; i < PROCESS_QUANTITY; i++ )
+    {
+        struct PCB *pcb = processes_list + i;
+        print_process_control_block( pcb );
+    }
+
+    printf( "CONFIGURATION :: PROCESSES_LIMIT: %d, READY_QUEUE_QNT: %d, DISK_TIME: %d, PRINTER_TIME: %d, MAGNETIC_TAPE_TIME: %d \n\n", 
+           PROCESSES_LIMIT, 
+           READY_QUEUE_QNT,
+           DISK_TIME, 
+           PRINTER_TIME, 
+           MAGNETIC_TAPE_TIME );
 }
 
 void * process_creator_thread( void *arg )
@@ -452,6 +528,22 @@ void * process_creator_thread( void *arg )
         {
             break;
         }
+
+        #pragma region LIMIT CHECKING
+        
+        pthread_mutex_lock( &terminated_lock );
+
+        int terminated_processes = terminated_pointer;
+
+        pthread_mutex_unlock( &terminated_lock );
+
+        if( processes_created - terminated_processes >= PROCESSES_LIMIT )
+        {
+            printf( "Process Creator :: Waiting until a process is terminated." );
+            continue;
+        }
+
+        #pragma endregion
 
         for( int i = 0; i < PROCESS_QUANTITY; i++ )
         {    
@@ -477,8 +569,6 @@ void * process_creator_thread( void *arg )
             int past_time  = time( NULL ) - start_time;
             int should_create = process->start_after <= past_time;
 
-            // printf( "PID: %d, past_time: %d, should_create: %d, start_after: %d\n", pid, past_time, should_create, process->start_after );
-
             pthread_mutex_unlock( &processes_lock );
 
             #pragma endregion
@@ -501,7 +591,7 @@ void * process_creator_thread( void *arg )
 
                 pthread_mutex_unlock( &ready_queues_lock );
 
-                printf( "Created process PID: %d at %d secs.\n ", pid, past_time );
+                printf( "Process Creator :: Created a new process { PID: %d } at %d secs.\n", pid, past_time );
             }
 
             #pragma endregion 
@@ -515,12 +605,12 @@ void * process_creator_thread( void *arg )
         int sleep_time = shortest_start_after - past_time;
         if ( sleep_time > 0 )
         {
-            printf( "About to sleep for %d seconds.\n", sleep_time );
+            printf( "Process Creator :: About to sleep for %d secs.\n", sleep_time );
             sleep( sleep_time );
         }
     }
 
-    printf( "processes creator has ended\n" );  
+    printf( "Process Creator :: Exiting.\n" );  
 }
 
 struct PCB * get_next_element( struct PCB **ready_queue, int length )
@@ -532,26 +622,84 @@ struct PCB * get_next_element( struct PCB **ready_queue, int length )
         ready_queue[ i ] = ready_queue[ i + 1 ];
     }
 
-    ready_queue[ length - 1] = NULL;
-
     return pcb;
+}
 
+int * get_snapshot( int * arr, int length )
+{
+    int *new_arr = malloc( length * sizeof( int ) );
+    
+    pthread_mutex_lock( &ready_queues_lock );
+
+    for( int i = 0; i < length; i++ )
+    {
+        new_arr[ i ] = arr[ i ];
+    }
+
+    pthread_mutex_unlock( &ready_queues_lock );
+
+    return new_arr;
+}
+
+int any_change( int *curr, int *snapshot, int boundary, int *changed_queue )
+{
+    int true = 1, false = 0;
+
+    pthread_mutex_lock( &ready_queues_lock );
+
+    for( int i = 0; i < boundary; i++ )
+    {
+        if( curr[ i ] > snapshot[ i ] )
+        {
+            *changed_queue = i;
+
+            return true;
+        }
+    }
+
+    pthread_mutex_unlock( &ready_queues_lock );
+
+
+    return false;
 }
 
 void * cpu_scheduler_thread( void *arg )
 {
     while( 1 )
-    {
-        // get a snapshot of ready_pointers;
+    {   
+        #pragma region  CHECKING IF THERE IS ANY REMAINING PROCESS
+
+        pthread_mutex_lock( &terminated_lock );
+
+        if( terminated_pointer >= PROCESS_QUANTITY )
+        {
+            break;
+        }
+        pthread_mutex_unlock( &terminated_lock );
+
+        #pragma endregion
+
+        int *snapshot = get_snapshot( ready_pointers , READY_QUEUE_QNT );
 
         for( int i  = 0; i < READY_QUEUE_QNT; i++ )
-        {
-
+        {   
+            #pragma region  CHECK HIGHER PRIORITY QUEUES
+            // checking if there is another process ready to run
+            // in queues with higher priority
             if( i > 0 )
             {
-                // should check if there is another process
-                // recently arrived in higher priorities queue
+                int changed_queue;
+
+                if( any_change( ready_pointers, snapshot, i, &changed_queue) )
+                {
+                    printf( "CPU Scheduler :: changing queue from %d to %d.\n", i, changed_queue );
+                    
+                    i = changed_queue - 1;
+
+                    continue;
+                }
             }
+            #pragma endregion
 
             pthread_mutex_lock( &ready_queues_lock );
 
@@ -562,89 +710,132 @@ void * cpu_scheduler_thread( void *arg )
                 continue;
             }
 
-            struct PCB **ready_queue = ready_queues[ i ];
+            printf( "CPU Scheduler :: processing ready queue no. %d with %d elements.\n", i, ready_pointers[ i ] );
+            fflush( stdout );
 
-            struct PCB *pcb = get_next_element( ready_queue, ready_pointers[ i ]-- );
+            struct PCB *pcb = get_next_element( ready_queues[ i ], ready_pointers[ i ] );
+
+            ready_pointers[ i ] -= 1;
 
             pthread_mutex_unlock( &ready_queues_lock );
 
-            pthread_mutex_lock( &processes_lock );
-
+            #pragma region  CHECKING IF A PROCESS HAS FINISHED
+            
             if( pcb->PC >= pcb->instruction_qnt )
             {
                 pcb->status == TERMINATED;
 
+                pthread_mutex_lock( &terminated_lock );
+
+                terminated_queue[ terminated_pointer++ ] = pcb;
+
+                pthread_mutex_unlock( &terminated_lock );
+
+                printf( "CPU Scheduler :: Process { PID: %d, PC: %d, inst: %d } has terminated.\n", pcb->PID, pcb->PC, pcb->instruction_qnt );
+
                 continue;
             }
 
+            #pragma endregion
+
             struct Instruction *inst = pcb->instructions + pcb->PC;
-
-            pthread_mutex_unlock( &processes_lock );
-
-            printf( "CPU_SCHEDULER :: PID: %d, PC: %d, int_qnt: %d, int_type: %d, int_time: %d.\n", pcb->PID, pcb->PC, pcb->instruction_qnt, inst->type, inst->time );
 
             switch( inst->type )
             {
                 case DISK:
-                {
+                {   
+                    pcb->status = WAITING;
+
                     pthread_mutex_lock( &disk_lock );
 
                     disk_queue[ disk_queue_pointer++ ] = pcb;
 
                     pthread_mutex_unlock( &disk_lock );
 
+                    printf( "CPU Scheduler :: process { PID: %d } is waiting for disk.\n", pcb->PID );
+
                     break;
                 }
                 case MAGNETIC_TAPE:
                 {
+                    pcb->status = WAITING;
+
                     pthread_mutex_lock( &magnetic_tape_lock );
 
                     magnetic_tape_queue[ magnetic_tape_pointer++ ] = pcb;
 
                     pthread_mutex_unlock( &magnetic_tape_lock );
 
+                    printf( "CPU Scheduler :: process { PID: %d } is waiting for magnetic tape.\n", pcb->PID );
+
                     break;
                 }
                 case PRINTER:
                 {
+                    pcb->status = WAITING;
+
                     pthread_mutex_lock( &printer_lock );
 
                     printer_queue[ printer_queue_pointer++ ] = pcb;
 
                     pthread_mutex_unlock( &printer_lock );
 
+                    printf( "CPU Scheduler :: process { PID: %d } is waiting for printer.\n", pcb->PID );
+
                     break;
                 }
-                default:
                 case CPU:
                 {
+                    pcb->status = RUNNING;
+                    
                     if( inst->time <= quantum_time_lists[ i ] )
                     {
+                        printf( "CPU Scheduler :: process { PID: %d } is running for %d secs.\n", pcb->PID, inst->time );
+
                         sleep( inst->time );
                         
-                        pthread_mutex_lock( &processes_lock );
-
                         inst->time = 0;
                         
                         pcb->PC++;
-
-                        pthread_mutex_unlock( &processes_lock );
                     }
                     else
                     {
+                        printf( "CPU Scheduler :: process { PID: %d } is running for %d secs.\n", pcb->PID, quantum_time_lists[ i ] );
+
                         sleep( quantum_time_lists[ i ] );
 
-                        pthread_mutex_lock( &processes_lock );
-
                         inst->time -= quantum_time_lists[ i ];
-
-                        pthread_mutex_unlock( &processes_lock );
                     }
+
+                    pthread_mutex_lock( &ready_queues_lock );
+
+                    if( i == READY_QUEUE_QNT - 1 )
+                    {
+                        ready_queues[ i ][ ready_pointers[ i ] ] = pcb;
+
+                        ready_pointers[ i ] += 1;
+                    }
+                    else
+                    {
+                        ready_queues[ i + 1 ][ ready_pointers[ i + 1 ] ] = pcb;
+
+                        ready_pointers[ i + 1 ] += 1;
+                    }
+
+                    pthread_mutex_unlock( &ready_queues_lock );
+
                     break;
+                }
+                default:
+                {
+                    printf( "Invalid instruction type: %s of process { PID: %d }.\n", instruction_type( inst->type ), pcb->PID );
+                    exit( -1 );
                 }
             }
         }
     }
+
+    printf( "CPU Scheduler :: No more process to execute.\n" );
 }
 
 void * io_thread ( void *arg )
@@ -656,21 +847,23 @@ void * io_thread ( void *arg )
     int                 *io_queue_pointer;
     int                 blocked_time;
 
-    if( strcmp( io_type, "DISK" ) == 0 )
+    #pragma region SETTING IO TYPE
+
+    if( strcmp( io_type, "Disk" ) == 0 )
     {
         io_queue         =  disk_queue;
         io_lock          =  &disk_lock;
         io_queue_pointer =  &disk_queue_pointer;
         blocked_time     =  DISK_TIME;
     }
-    else if( strcmp( io_type, "PRINTER" ) == 0 )
+    else if( strcmp( io_type, "Printer" ) == 0 )
     {
         io_queue         =  printer_queue;
         io_lock          =  &printer_lock;
         io_queue_pointer =  &printer_queue_pointer;
         blocked_time     =  PRINTER_TIME;
     }
-    else if( strcmp( io_type, "MAGNETIC_TAPE" ) == 0 )
+    else if( strcmp( io_type, "Magnetic Tape" ) == 0 )
     {   
         io_queue         =  magnetic_tape_queue;
         io_lock          =  &magnetic_tape_lock;
@@ -682,6 +875,8 @@ void * io_thread ( void *arg )
         printf( "Invalid IO type: %s. Exiting system...\n", io_type );
         exit( -1 );
     }
+
+    #pragma endregion
 
     while( 1 )
     {
@@ -700,13 +895,13 @@ void * io_thread ( void *arg )
 
         pthread_mutex_unlock( io_lock );
 
-        sleep( blocked_time );
+        printf( "%s :: blocking for process { PID: %d } for %d secs.\n", io_type, pcb->PID, blocked_time );
 
-        pthread_mutex_lock( &processes_lock );
+        sleep( blocked_time );
 
         pcb->PC++;
 
-        pthread_mutex_unlock( &processes_lock );
+        pcb->status = READY;
 
         // sending process back to the first list
         // instead, should every io device sends a process to 
@@ -726,18 +921,13 @@ int main( int argc, char *argv[] )
 
    init_simluator( file_name );
 
+   print_configuration( );
+
    int start_time = time( NULL );
 
-   printf( "PROCESSES_LIMIT: %d, READY_QUEUE_QNT: %d, DISK_TIME: %d, PRINTER_TIME: %d, MAGNETIC_TAPE_TIME: %d \n", 
-           PROCESSES_LIMIT, 
-           READY_QUEUE_QNT,
-           DISK_TIME, 
-           PRINTER_TIME, 
-           MAGNETIC_TAPE_TIME );
-
-    char *printer        = "PRINTER", 
-        *disk           = "DISK", 
-        *magnetic_tape  = "MAGNETIC_TAPE";
+   char *printer         =     "Printer", 
+        *disk            =     "Disk", 
+        *magnetic_tape   =     "Magnetic Tape";
 
    pthread_create( &process_creator, NULL, &process_creator_thread, ( void * ) ( &start_time ) );
 
