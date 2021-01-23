@@ -1,0 +1,90 @@
+simulator:
+{
+    process_config:
+    {
+        limit: 10;
+        processes:
+        (
+            {
+                qnt: 3;
+                instructions: (
+                    {
+                        type: "CPU",
+                        time: 8,
+                    },
+                    {
+                        type: "PRINTER"
+                    },
+                    {
+                        type: "CPU", 
+                        time: 5
+                    },
+                    {
+                        type: "MAGNETIC_TAPE"
+                    }
+                );
+                start_after: 10; 
+            },
+            {
+                instructions: 
+                (
+                    {
+                        type: "CPU", 
+                        time: 2
+                    },
+                    {
+                        type: "DISK"
+                    }, 
+                    {
+                        type: "CPU", 
+                        time: 10
+                    }
+                );
+                start_after: 30;
+            },
+            {
+                instructions:
+                (
+                    { 
+                        type: "CPU",
+                        time: 3
+                    },
+                    {
+                        type: "MAGNETIC_TAPE"
+                    },
+                    {
+                        type: "CPU", 
+                        time: 20
+                    }
+                );
+                start_after: 5;
+            }
+        );
+    };
+    io_config:
+    {
+        disk: 5;
+        printer: 10;
+        magnetic_tape: 15;
+    };
+    queue_config:
+    {
+        quantity: 4;
+        queues:
+        (
+            {
+                quantum_time: 2
+            },
+            {
+                quantum_time: 4
+            },
+            {
+                quantum_time: 8
+            },
+            {
+                quantum_time: 16
+            }
+        );
+    }
+
+};

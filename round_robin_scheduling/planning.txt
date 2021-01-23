@@ -1,0 +1,102 @@
+What a round-robin scheduling is:
+    - FCFS queue with preemption
+    - time quantum 
+    - circular queue 
+    - after 1 time quantum preempt the queue 
+    - FIFO queue of processes 
+    - set a timer to interrupt 
+
+- what if the process finishes before the time quantum timer?
+
+- statistics we need:
+    - waiting time of each process
+    - average waiting time 
+    - 
+
+
+- how should a process look like: 
+    - a finite sequence of CPU burts and I/O bursts :
+    In regex: ( CPU | IO )+ 
+    - each CPU burt must have its time 
+- Condiguration file:
+     - give a start x = x0 
+     - give a function to calculate x1 based on x0 
+
+ 
+
+- feedback:
+    - every queue will behave as an RR 
+    - prevent starvation on the last queue
+
+- PCB:  
+    - PID 
+    - status : running, blocked , terminaded 
+    - PPID? 
+    - prioridade: fila 
+
+
+
+Premissas:
+ - Limite máximo de processos criados;
+ - I/O burst time -> ? 
+
+==========================================================================
+- upper bound of processes ( number of processes in an array at config file )
+- quantum time ( slice time ) ( defined at config file ) ==> every queue should have a different quantum time
+- I/O duration: 
+    - disk R/W 
+    - magnetic tape R/W 
+    - printer R/W 
+- Processes Struct PCB:
+     - PID ( generate random int )
+     - instructions: an array with a Struct{ data, time }
+     - PC - program counter: pointing to the next array instruction
+     - Status: NEW, READY, RUNNING, WAITING, TERMINATED
+     - priority?
+     - PPID?
+- QUEUES:
+ - at least two for CPU burst
+ - ONE QUEUE FOR every I/O 
+ - 
+
+
+==================================================================================
+
+
+
+One QUEUE of new processes FIFO, there will be a thread responsable to add processes into the queue according to its scheduled time.
+
+Another QUEUE of terminated processes, were the main thread will be doing things 
+
+I/O Queue where processes will be executed by a third thread.
+
+
+==================================================================================
+
+thread 1:
+
+process_creator:
+
+will take all processes from the processes array and put them in the ready_queue
+
+thread_2:
+
+CPU_SCHEDULER:
+
+    - will take everyone in the ready_queues and process them 
+    - if the next instruction is an IO insert PCB in the IO queue
+    - will take the last process and stop it 
+
+thread_3:
+
+PRINTER
+     - will take PCB from IO queue and execute them
+     - then send it back to ready_queue 
+
+thread_4: 
+    MAGNETIC_TAPE
+        same shit
+
+thread_5:
+    DISK:
+        same shit 
