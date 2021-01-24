@@ -1,0 +1,72 @@
+simulator:
+{
+    process_config:
+    {
+        limit: 10;
+        quantity: 2;
+        processes:
+        (
+            {
+                qnt: 4;
+                start_after: 3; 
+                instructions: 
+                (
+                    {
+                        type: "CPU",
+                        time: 3,
+                    },
+                    {
+                        type: "PRINTER"
+                    },
+                    {
+                        type: "CPU", 
+                        time: 5
+                    },
+                    {
+                        type: "MAGNETIC_TAPE"
+                    }
+                );
+            },
+            {
+                qnt: 3;
+                start_after: 0; 
+                instructions: 
+                (
+                    {
+                        type: "CPU",
+                        time: 2,
+                    },
+                    {
+                        type: "DISK"
+                    },
+                    {
+                        type: "CPU", 
+                        time: 5
+                    }
+                );
+            }
+        );
+    };
+    io_config:
+    {
+        disk: 2;
+        printer: 3;
+        magnetic_tape: 4;
+    };
+    queue_config:
+    {
+        quantity: 3;
+        queues:
+        (
+            {
+                quantum_time: 2
+            },
+            {
+                quantum_time: 4
+            },
+            {
+                quantum_time: 8
+            }
+        );
+    }
+};

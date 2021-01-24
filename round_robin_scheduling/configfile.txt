@@ -3,17 +3,17 @@ simulator:
     process_config:
     {
         limit: 10;
-        quantity: 3;
+        quantity: 5;
         processes:
         (
             {
                 qnt: 4;
-                start_after: 2; 
+                start_after: 3; 
                 instructions: 
                 (
                     {
                         type: "CPU",
-                        time: 8,
+                        time: 11,
                     },
                     {
                         type: "PRINTER"
@@ -26,16 +26,33 @@ simulator:
                         type: "MAGNETIC_TAPE"
                     }
                 );
-                
             },
             {
                 qnt: 3;
+                start_after: 1; 
+                instructions: 
+                (
+                    {
+                        type: "MAGNETIC_TAP"
+                    },
+                    {
+                        type: "CPU", 
+                        time: 15
+                    },
+                    {
+                        type: "CPU", 
+                        time: 5
+                    }
+                );
+            },
+            {
+                qnt: 5;
                 start_after: 0;
                 instructions: 
                 (
                     {
                         type: "CPU", 
-                        time: 2
+                        time: 3
                     },
                     {
                         type: "DISK"
@@ -43,6 +60,31 @@ simulator:
                     {
                         type: "CPU", 
                         time: 10
+                    },
+                    {
+                        type: "PRINTER"
+                    }, 
+                    {
+                        type: "CPU",
+                        time: 1
+                    }
+                );
+            },
+            {   
+                qnt: 3;
+                start_after: 5;
+                instructions:
+                (
+                    { 
+                        type: "CPU",
+                        time: 3
+                    },
+                    {
+                        type: "MAGNETIC_TAPE"
+                    },
+                    {
+                        type: "CPU", 
+                        time: 20
                     }
                 );
             },
@@ -63,7 +105,6 @@ simulator:
                         time: 20
                     }
                 );
-                
             }
         );
     };
@@ -92,5 +133,4 @@ simulator:
             }
         );
     }
-
 };

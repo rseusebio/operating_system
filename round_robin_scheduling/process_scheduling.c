@@ -5,18 +5,7 @@
 #include <libconfig.h>
 #include <string.h>
 
-int PROCESSES_LIMIT;
-int PROCESS_QUANTITY;
-int DISK_TIME;
-int MAGNETIC_TAPE_TIME;
-int PRINTER_TIME;
-int READY_QUEUE_QNT;
-
-pthread_t process_creator;
-pthread_t cpu_scheduler;
-pthread_t printer_scheduler;
-pthread_t magnetic_tape_scheduler;
-pthread_t disk_scheduler;
+#pragma region TYPES & ENUMS
 
 enum Status
 {
@@ -50,6 +39,45 @@ struct PCB
     int instruction_qnt;
     int start_after;
 };
+
+#pragma endregion
+
+#pragma region FUNCTIONS 
+
+char * status_name( enum Status status_code );
+char * instruction_type( enum InstructionType instruction_type );
+
+void print_instructions( struct Instruction *instructions, int qnt );
+void print_process_control_block( struct PCB *pcb );
+void print_configuration( );
+void print_ready_queue_elements( struct PCB **ready_queue, int length );
+
+void init_simluator( char *config_file_path );
+
+void * process_creator_thread( void *arg );
+void * cpu_scheduler_thread( void *arg );
+void * io_thread ( void *arg );
+
+struct PCB * get_next_element( struct PCB **ready_queue, int length );
+int * get_snapshot( int * arr, int length );
+int any_change( int *curr, int *snapshot, int boundary, int *changed_queue );
+
+#pragma endregion
+
+
+int PROCESSES_LIMIT;
+int PROCESS_QUANTITY;
+int DISK_TIME;
+int MAGNETIC_TAPE_TIME;
+int PRINTER_TIME;
+int READY_QUEUE_QNT;
+
+pthread_t process_creator;
+pthread_t cpu_scheduler;
+pthread_t printer_scheduler;
+pthread_t magnetic_tape_scheduler;
+pthread_t disk_scheduler;
+
 
 struct PCB          *processes_list;
 pthread_mutex_t     processes_lock;
@@ -158,6 +186,7 @@ void print_instructions( struct Instruction *instructions, int qnt )
 void print_process_control_block( struct PCB *pcb )
 {
     printf( "{\n" );
+    printf( "\tAddresses: %p\n", pcb );
     printf( "\tPID: %d\n", pcb->PID );
     printf( "\tPC: %d\n",  pcb->PC );
     printf( "\tstatus: %s\n",  status_name( pcb->status ) );
@@ -394,7 +423,7 @@ void init_simluator( char *config_file_path )
         exit( -1 );
     }
 
-    magnetic_tape_queue   = malloc( PROCESS_QUANTITY * sizeof( struct PCB *)  );
+    magnetic_tape_queue   = malloc( PROCESS_QUANTITY * sizeof( struct PCB *) );
     magnetic_tape_pointer = 0;
     if( pthread_mutex_init( &magnetic_tape_lock, NULL ) != 0 )
     {   
@@ -447,11 +476,11 @@ void init_simluator( char *config_file_path )
 
     for( int i = 0; i < READY_QUEUE_QNT; i++ )
     {
-        struct PCB **ready_queue = ( ready_queues + i )[0];
+        // struct PCB **ready_queue = ready_queues[ i ][ 0 ];
 
         int *rq_quantum = quantum_time_lists + i;
 
-        ready_queue = malloc( PROCESS_QUANTITY * sizeof( struct PCB * ) );
+        ready_queues[ i ] = malloc( PROCESS_QUANTITY * sizeof( struct PCB * ) );
 
         ready_pointers[ i ] = 0;
 
@@ -540,6 +569,7 @@ void * process_creator_thread( void *arg )
         if( processes_created - terminated_processes >= PROCESSES_LIMIT )
         {
             printf( "Process Creator :: Waiting until a process is terminated." );
+
             continue;
         }
 
@@ -549,27 +579,22 @@ void * process_creator_thread( void *arg )
         {    
             #pragma region READ PROCESS INFORMATION
 
-            pthread_mutex_lock( &processes_lock );
+            struct PCB *pcb = processes_list + i;
 
-            struct PCB *process = processes_list + i;
+            int pid = pcb->PID;
 
-            int pid = process->PID;
-
-            if( process->status != NEW )
+            if( pcb->status != NEW )
             {
-                pthread_mutex_unlock( &processes_lock );
                 continue;
             }
 
-            if( shortest_start_after < 0 || process->start_after < shortest_start_after )
+            if( shortest_start_after < 0 || pcb->start_after < shortest_start_after )
             {
-                shortest_start_after = process->start_after;
+                shortest_start_after = pcb->start_after;
             }
 
             int past_time  = time( NULL ) - start_time;
-            int should_create = process->start_after <= past_time;
-
-            pthread_mutex_unlock( &processes_lock );
+            int should_create = pcb->start_after <= past_time;
 
             #pragma endregion
 
@@ -577,21 +602,22 @@ void * process_creator_thread( void *arg )
 
             if( should_create )
             {
-                pthread_mutex_lock( &processes_lock );
-                process->status  = READY;
-                pthread_mutex_unlock( &processes_lock );
+                pcb->status  = READY;
 
                 pthread_mutex_lock( &ready_queues_lock );
                 
-                struct PCB **ready_queue = ready_queues[ 0 ];
+                ready_queues[ 0 ][ ready_pointers[ 0 ] ] = pcb;
 
-                ready_queue[ ready_pointers[ 0 ]++ ] = process;
+                ready_pointers[ 0 ] += 1;
                 
                 processes_created++;
 
+                printf( "Process Creator :: Created a new process { PID: %d, Address: %p } at %d secs.\n", pid, pcb, past_time );
+
+                print_ready_queue_elements( ready_queues[ 0 ],  ready_pointers[ 0 ]  );
+
                 pthread_mutex_unlock( &ready_queues_lock );
 
-                printf( "Process Creator :: Created a new process { PID: %d } at %d secs.\n", pid, past_time );
             }
 
             #pragma endregion 
@@ -599,13 +625,11 @@ void * process_creator_thread( void *arg )
 
         int past_time = time( NULL ) - start_time;
 
-        // printf( "Total processes created: %d, shortest_start_after: %d\n ", processes_created, shortest_start_after );
-
         // sleep until the next process
         int sleep_time = shortest_start_after - past_time;
         if ( sleep_time > 0 )
         {
-            printf( "Process Creator :: About to sleep for %d secs.\n", sleep_time );
+            printf( "Process Creator :: Waiting for %d secs until next process can be created.\n", sleep_time );
             sleep( sleep_time );
         }
     }
@@ -623,6 +647,18 @@ struct PCB * get_next_element( struct PCB **ready_queue, int length )
     }
 
     return pcb;
+}
+
+void print_ready_queue_elements( struct PCB **ready_queue, int length )
+{
+    for( int i = 0; i < length; i++ )
+    {
+        struct PCB *pcb = ready_queue[ i ];
+
+        printf( "{ PID: %d, status: %s }\n", pcb->PID, status_name( pcb->status ) );
+    }
+
+    printf( "==========================\n" );
 }
 
 int * get_snapshot( int * arr, int length )
@@ -665,6 +701,8 @@ int any_change( int *curr, int *snapshot, int boundary, int *changed_queue )
 
 void * cpu_scheduler_thread( void *arg )
 {
+    int i = 0;
+
     while( 1 )
     {   
         #pragma region  CHECKING IF THERE IS ANY REMAINING PROCESS
@@ -673,164 +711,176 @@ void * cpu_scheduler_thread( void *arg )
 
         if( terminated_pointer >= PROCESS_QUANTITY )
         {
+            pthread_mutex_unlock( &terminated_lock );
+
             break;
         }
+
         pthread_mutex_unlock( &terminated_lock );
 
         #pragma endregion
 
         int *snapshot = get_snapshot( ready_pointers , READY_QUEUE_QNT );
 
-        for( int i  = 0; i < READY_QUEUE_QNT; i++ )
-        {   
-            #pragma region  CHECK HIGHER PRIORITY QUEUES
-            // checking if there is another process ready to run
-            // in queues with higher priority
-            if( i > 0 )
+        #pragma region  CHECK HIGHER PRIORITY QUEUES
+
+        if( i > 0 )
+        {
+            int changed_queue;
+
+            if( any_change( ready_pointers, snapshot, i, &changed_queue) )
             {
-                int changed_queue;
-
-                if( any_change( ready_pointers, snapshot, i, &changed_queue) )
-                {
-                    printf( "CPU Scheduler :: changing queue from %d to %d.\n", i, changed_queue );
-                    
-                    i = changed_queue - 1;
-
-                    continue;
-                }
-            }
-            #pragma endregion
-
-            pthread_mutex_lock( &ready_queues_lock );
-
-            if( ready_pointers[ i ] <= 0 )
-            {
-                pthread_mutex_unlock( &ready_queues_lock );
+                printf( "CPU Scheduler :: changing queue from %d to %d.\n", i, changed_queue );
+                
+                i = changed_queue - 1;
 
                 continue;
             }
+        }
+        
+        #pragma endregion
 
-            printf( "CPU Scheduler :: processing ready queue no. %d with %d elements.\n", i, ready_pointers[ i ] );
-            fflush( stdout );
+        pthread_mutex_lock( &ready_queues_lock );
 
-            struct PCB *pcb = get_next_element( ready_queues[ i ], ready_pointers[ i ] );
-
-            ready_pointers[ i ] -= 1;
-
+        if( ready_pointers[ i ] <= 0 )
+        {
             pthread_mutex_unlock( &ready_queues_lock );
 
-            #pragma region  CHECKING IF A PROCESS HAS FINISHED
-            
-            if( pcb->PC >= pcb->instruction_qnt )
-            {
-                pcb->status == TERMINATED;
+            i = ( i + 1 ) % READY_QUEUE_QNT;
 
-                pthread_mutex_lock( &terminated_lock );
+            continue;
+        }
 
-                terminated_queue[ terminated_pointer++ ] = pcb;
+        printf( "CPU Scheduler :: processing ready queue no. %d with %d elements.\n", i, ready_pointers[ i ] );
+        fflush( stdout );
 
-                pthread_mutex_unlock( &terminated_lock );
+        print_ready_queue_elements( ready_queues[ i ], ready_pointers[ i ] );
 
-                printf( "CPU Scheduler :: Process { PID: %d, PC: %d, inst: %d } has terminated.\n", pcb->PID, pcb->PC, pcb->instruction_qnt );
+        struct PCB *pcb = get_next_element( ready_queues[ i ], ready_pointers[ i ] );
 
-                continue;
+        ready_pointers[ i ] -= 1;
+
+        pthread_mutex_unlock( &ready_queues_lock );
+
+        struct Instruction *inst = pcb->instructions + pcb->PC;
+
+        switch( inst->type )
+        {
+            case DISK:
+            {   
+                pcb->status = WAITING;
+
+                pthread_mutex_lock( &disk_lock );
+
+                disk_queue[ disk_queue_pointer++ ] = pcb;
+
+                pthread_mutex_unlock( &disk_lock );
+
+                printf( "CPU Scheduler :: process { PID: %d } is waiting for disk.\n", pcb->PID );
+
+                break;
             }
-
-            #pragma endregion
-
-            struct Instruction *inst = pcb->instructions + pcb->PC;
-
-            switch( inst->type )
+            case MAGNETIC_TAPE:
             {
-                case DISK:
-                {   
-                    pcb->status = WAITING;
+                pcb->status = WAITING;
 
-                    pthread_mutex_lock( &disk_lock );
+                pthread_mutex_lock( &magnetic_tape_lock );
 
-                    disk_queue[ disk_queue_pointer++ ] = pcb;
+                magnetic_tape_queue[ magnetic_tape_pointer++ ] = pcb;
 
-                    pthread_mutex_unlock( &disk_lock );
+                pthread_mutex_unlock( &magnetic_tape_lock );
 
-                    printf( "CPU Scheduler :: process { PID: %d } is waiting for disk.\n", pcb->PID );
+                printf( "CPU Scheduler :: process { PID: %d } is waiting for magnetic tape.\n", pcb->PID );
 
-                    break;
-                }
-                case MAGNETIC_TAPE:
+                break;
+            }
+            case PRINTER:
+            {
+                pcb->status = WAITING;
+
+                pthread_mutex_lock( &printer_lock );
+
+                printer_queue[ printer_queue_pointer++ ] = pcb;
+
+                pthread_mutex_unlock( &printer_lock );
+
+                printf( "CPU Scheduler :: process { PID: %d } is waiting for printer.\n", pcb->PID );
+
+                break;
+            }
+            case CPU:
+            {
+                pcb->status = RUNNING;
+
+                int running_time = quantum_time_lists[ i ];
+
+                if( inst->time <= quantum_time_lists[ i ] )
                 {
-                    pcb->status = WAITING;
-
-                    pthread_mutex_lock( &magnetic_tape_lock );
-
-                    magnetic_tape_queue[ magnetic_tape_pointer++ ] = pcb;
-
-                    pthread_mutex_unlock( &magnetic_tape_lock );
-
-                    printf( "CPU Scheduler :: process { PID: %d } is waiting for magnetic tape.\n", pcb->PID );
-
-                    break;
+                    running_time = inst->time;
                 }
-                case PRINTER:
+
+                printf( "CPU Scheduler :: process { PID: %d } will run for %d secs.\n", pcb->PID, running_time );
+
+                sleep( inst->time );
+
+                printf( "CPU Scheduler :: process { PID: %d } ran for %d secs.\n", pcb->PID, running_time );
+                
+                inst->time -= running_time;
+
+                if( inst->time <= 0 )
                 {
-                    pcb->status = WAITING;
+                    pcb->PC++;
 
-                    pthread_mutex_lock( &printer_lock );
-
-                    printer_queue[ printer_queue_pointer++ ] = pcb;
-
-                    pthread_mutex_unlock( &printer_lock );
-
-                    printf( "CPU Scheduler :: process { PID: %d } is waiting for printer.\n", pcb->PID );
-
-                    break;
-                }
-                case CPU:
-                {
-                    pcb->status = RUNNING;
-                    
-                    if( inst->time <= quantum_time_lists[ i ] )
+                    #pragma region  CHECKING IF A PROCESS HAS FINISHED
+        
+                    if( pcb->PC >= pcb->instruction_qnt )
                     {
-                        printf( "CPU Scheduler :: process { PID: %d } is running for %d secs.\n", pcb->PID, inst->time );
+                        pcb->status == TERMINATED;
 
-                        sleep( inst->time );
-                        
-                        inst->time = 0;
-                        
-                        pcb->PC++;
-                    }
-                    else
-                    {
-                        printf( "CPU Scheduler :: process { PID: %d } is running for %d secs.\n", pcb->PID, quantum_time_lists[ i ] );
+                        pthread_mutex_lock( &terminated_lock );
 
-                        sleep( quantum_time_lists[ i ] );
+                        terminated_queue[ terminated_pointer++ ] = pcb;
 
-                        inst->time -= quantum_time_lists[ i ];
-                    }
+                        pthread_mutex_unlock( &terminated_lock );
 
-                    pthread_mutex_lock( &ready_queues_lock );
+                        printf( "CPU Scheduler :: Process { PID: %d, PC: %d, inst: %d } has terminated.\n", pcb->PID, pcb->PC, pcb->instruction_qnt );
+                        fflush( stdout );
 
-                    if( i == READY_QUEUE_QNT - 1 )
-                    {
-                        ready_queues[ i ][ ready_pointers[ i ] ] = pcb;
-
-                        ready_pointers[ i ] += 1;
-                    }
-                    else
-                    {
-                        ready_queues[ i + 1 ][ ready_pointers[ i + 1 ] ] = pcb;
-
-                        ready_pointers[ i + 1 ] += 1;
+                        break;
                     }
 
-                    pthread_mutex_unlock( &ready_queues_lock );
+                    #pragma endregion
+                }
 
-                    break;
-                }
-                default:
+                pcb->status = READY;
+
+                #pragma region  MOVE TO THE NEXT READY QUEUE
+
+                pthread_mutex_lock( &ready_queues_lock );
+            
+                if( i == READY_QUEUE_QNT - 1 )
                 {
-                    printf( "Invalid instruction type: %s of process { PID: %d }.\n", instruction_type( inst->type ), pcb->PID );
-                    exit( -1 );
+                    ready_queues[ i ][ ready_pointers[ i ] ] = pcb;
+
+                    ready_pointers[ i ] += 1;
                 }
+                else
+                {                    
+                    ready_queues[ i + 1 ][ ready_pointers[ i + 1 ] ] = pcb;
+
+                    ready_pointers[ i + 1 ] += 1;
+                }
+
+                pthread_mutex_unlock( &ready_queues_lock );
+
+                #pragma endregion
+
+                break;
+            }
+            default:
+            {
+                printf( "Invalid instruction type: %s of process { PID: %d }.\n", instruction_type( inst->type ), pcb->PID );
+                exit( -1 );
             }
         }
     }
@@ -840,6 +890,8 @@ void * cpu_scheduler_thread( void *arg )
 
 void * io_thread ( void *arg )
 {
+    time_t start_time = time( NULL );
+
     char *io_type = (char *) arg;
 
     pthread_mutex_t     *io_lock; 
@@ -880,6 +932,22 @@ void * io_thread ( void *arg )
 
     while( 1 )
     {
+        
+        #pragma region  CHECKING IF THERE IS ANY PROCESSES LEFT
+        
+        pthread_mutex_lock( &terminated_lock );
+
+        if( terminated_pointer >= PROCESS_QUANTITY )
+        {
+            pthread_mutex_unlock( &terminated_lock );
+
+            break;
+        }
+
+        pthread_mutex_unlock( &terminated_lock );
+        
+        #pragma endregion
+
         pthread_mutex_lock( io_lock );
 
         if( *io_queue_pointer <= 0 )
@@ -896,28 +964,50 @@ void * io_thread ( void *arg )
         pthread_mutex_unlock( io_lock );
 
         printf( "%s :: blocking for process { PID: %d } for %d secs.\n", io_type, pcb->PID, blocked_time );
+        fflush( stdout );
 
         sleep( blocked_time );
 
         pcb->PC++;
 
-        pcb->status = READY;
+        if( pcb->PC >= pcb->instruction_qnt ) 
+        {
+            pcb->status = TERMINATED;
 
-        // sending process back to the first list
-        // instead, should every io device sends a process to 
-        // a different place
+            printf( "%s :: process { PID: %d } has blocked for %d secs and has terminated.\n", io_type, pcb->PID, blocked_time );
+            fflush( stdout );
 
-        pthread_mutex_lock( &ready_queues_lock );
+            pthread_mutex_lock( &terminated_lock );
 
-        ready_queues[0][ ready_pointers[0]++ ] = pcb;
+            terminated_queue[ terminated_pointer++ ] = pcb;
 
-        pthread_mutex_unlock( &ready_queues_lock );
+            pthread_mutex_unlock( &terminated_lock );
+        }
+        else 
+        {
+            pcb->status = READY;
+
+            printf( "%s :: process { PID: %d } blocked for %d secs and is now ready.\n", io_type, pcb->PID, blocked_time );
+            fflush( stdout );
+
+            // sending process back to the first list
+            // instead, should every io device sends a process to 
+            // a different place
+            pthread_mutex_lock( &ready_queues_lock );
+
+            ready_queues[0][ ready_pointers[0]++ ] = pcb;
+
+            pthread_mutex_unlock( &ready_queues_lock );
+        }
     }
+
+    printf( "%s :: No more processes to execute.\n", io_type );
+    fflush( stdout );
 }
 
 int main( int argc, char *argv[] )
 {
-   char *file_name = "./configfile.txt";
+   char *file_name = "./configfile_2.txt";
 
    init_simluator( file_name );
 
@@ -943,6 +1033,8 @@ int main( int argc, char *argv[] )
    pthread_join( disk_scheduler,          NULL );
    pthread_join( magnetic_tape_scheduler, NULL );
 
+   printf( "All threads have finished.\n" );
+
    pthread_mutex_destroy( &ready_queues_lock );
    pthread_mutex_destroy( &processes_lock );
    pthread_mutex_destroy( &disk_lock );
@@ -956,6 +1048,9 @@ int main( int argc, char *argv[] )
    free( magnetic_tape_queue );
    free( terminated_queue );
    free( processes_list );
+
+   printf( "Simulator is over.\n" );
+
 
    return 0;
 }
