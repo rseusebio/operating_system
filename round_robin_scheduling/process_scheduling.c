@@ -40,6 +40,21 @@ struct PCB
     int start_after;
 };
 
+struct ExecRecord
+{
+    int   PID;
+    int   start_time;
+    int   end_time;
+};
+
+struct RecordContainer 
+{
+    struct ExecRecord   *records;
+    pthread_mutex_t     lock;
+    int                 pointer;
+    int                 size;
+};
+
 #pragma endregion
 
 #pragma region FUNCTIONS 
@@ -51,6 +66,7 @@ void print_instructions( struct Instruction *instructions, int qnt );
 void print_process_control_block( struct PCB *pcb );
 void print_configuration( );
 void print_ready_queue_elements( struct PCB **ready_queue, int length );
+void show_records( );
 
 void init_simluator( char *config_file_path );
 
@@ -63,7 +79,6 @@ int * get_snapshot( int * arr, int length );
 int any_change( int *curr, int *snapshot, int boundary, int *changed_queue );
 
 #pragma endregion
-
 
 int PROCESSES_LIMIT;
 int PROCESS_QUANTITY;
@@ -78,9 +93,10 @@ pthread_t printer_scheduler;
 pthread_t magnetic_tape_scheduler;
 pthread_t disk_scheduler;
 
-
 struct PCB          *processes_list;
 pthread_mutex_t     processes_lock;
+
+struct RecordContainer cpu_container;
 
 #pragma region  I/O QUEUES
 
@@ -200,6 +216,13 @@ void print_process_control_block( struct PCB *pcb )
 
 void init_simluator( char *config_file_path )
 {
+    int  CPU_execs         =   0,
+         printer_execs     =   0,
+         disk_execs        =   0,
+         magnetic_execs    =   0,
+         greatest_cpu_time =   0,
+         smallest_qt       =   0;
+    
     config_t            config;
     config_setting_t    *process_config,
                         *list_config,
@@ -332,21 +355,29 @@ void init_simluator( char *config_file_path )
 
             if( strcmp( type, "PRINTER" ) == 0 )
             {
+                printer_execs += 1;
+
                 inst->type = PRINTER;
                 inst->time = -1;
             }
             else if( strcmp( type, "MAGNETIC_TAPE" ) == 0 )
             {
+                magnetic_execs += 1;
+                
                 inst->type = MAGNETIC_TAPE;
                 inst->time = -1;
             }
             else if( strcmp( type, "DISK" ) == 0 )
-            {
+            {   
+                disk_execs += 1;
+
                 inst->type = DISK;
                 inst->time = -1;
             }
             else if( strcmp( type, "CPU" ) == 0 )
             {
+                CPU_execs += 1;
+
                 inst->type = CPU;
 
                 if( config_setting_lookup_int( instruction, "time", &inst->time) < 0)
@@ -359,6 +390,11 @@ void init_simluator( char *config_file_path )
                     printf( "Invalid time value: %d. Should be greater or equal to 1.", inst->time );
                     exit( -1 );
                 }
+
+                if( greatest_cpu_time == 0 || inst->time > greatest_cpu_time )
+                {
+                    greatest_cpu_time = inst->time;
+                }
             }
             else
             {
@@ -367,6 +403,18 @@ void init_simluator( char *config_file_path )
             }
         }
     }
+    
+    printf( "THERE WILL BE %d CPU executions.\n", CPU_execs );
+
+    cpu_container.records = malloc( CPU_execs * greatest_cpu_time * sizeof( struct ExecRecord ) );
+    cpu_container.pointer = 0;
+    cpu_container.size    = 0;
+    if( pthread_mutex_init( &cpu_container.lock, NULL ) != 0 )
+    {   
+        printf( "Couldn't init cpu_container's lock.\n" );
+        exit( -1 );
+    }    
+    
     #pragma endregion
 
     #pragma region I/O CONFIGURATION
@@ -701,6 +749,8 @@ int any_change( int *curr, int *snapshot, int boundary, int *changed_queue )
 
 void * cpu_scheduler_thread( void *arg )
 {
+    time_t start_time = *( (time_t *) arg );
+
     int i = 0;
 
     while( 1 )
@@ -819,6 +869,27 @@ void * cpu_scheduler_thread( void *arg )
                     running_time = inst->time;
                 }
 
+                #pragma region Saving Execution Record 
+                
+                pthread_mutex_lock( &cpu_container.lock );
+
+                // if( cpu_container.pointer >= cpu_container.size )
+                // {
+                //     increase_size( &cpu_container );
+                // }
+                
+                struct ExecRecord *record = cpu_container.records + cpu_container.pointer;
+
+                cpu_container.pointer += 1;
+
+                record->PID        = pcb->PID;    
+                record->start_time = time( NULL ) - start_time;
+                record->end_time   = record->start_time + running_time;
+                
+                pthread_mutex_unlock( &cpu_container.lock );
+
+                #pragma endregion
+
                 printf( "CPU Scheduler :: process { PID: %d } will run for %d secs.\n", pcb->PID, running_time );
 
                 sleep( inst->time );
@@ -931,8 +1002,7 @@ void * io_thread ( void *arg )
     #pragma endregion
 
     while( 1 )
-    {
-        
+    {  
         #pragma region  CHECKING IF THERE IS ANY PROCESSES LEFT
         
         pthread_mutex_lock( &terminated_lock );
@@ -985,17 +1055,21 @@ void * io_thread ( void *arg )
         }
         else 
         {
+            int ready_queue_index = 0;
+
+            if( strcmp( io_type, "Disk" ) == 0 )
+            {
+                ready_queue_index = READY_QUEUE_QNT  - 1;
+            }
+
             pcb->status = READY;
 
-            printf( "%s :: process { PID: %d } blocked for %d secs and is now ready.\n", io_type, pcb->PID, blocked_time );
+            printf( "%s :: process { PID: %d } blocked for %d secs and is now ready at queue no. %d.\n", io_type, pcb->PID, blocked_time, ready_queue_index );
             fflush( stdout );
 
-            // sending process back to the first list
-            // instead, should every io device sends a process to 
-            // a different place
             pthread_mutex_lock( &ready_queues_lock );
 
-            ready_queues[0][ ready_pointers[0]++ ] = pcb;
+            ready_queues[ ready_queue_index ][ ready_pointers[ ready_queue_index ]++ ] = pcb;
 
             pthread_mutex_unlock( &ready_queues_lock );
         }
@@ -1003,6 +1077,20 @@ void * io_thread ( void *arg )
 
     printf( "%s :: No more processes to execute.\n", io_type );
     fflush( stdout );
+}
+
+void show_records( )
+{
+    printf( "CPU Records: \n" );
+
+    for( int i = 0; i < cpu_container.pointer; i++ )
+    {
+        struct ExecRecord *record = cpu_container.records + i;
+
+        printf( "[ \"%d\", getDate( %d ), getDate( %d ) ]\n", record->PID, record->start_time, record->end_time );
+    }
+
+    printf( "============================\n" );
 }
 
 int main( int argc, char *argv[] )
@@ -1019,9 +1107,9 @@ int main( int argc, char *argv[] )
         *disk            =     "Disk", 
         *magnetic_tape   =     "Magnetic Tape";
 
-   pthread_create( &process_creator, NULL, &process_creator_thread, ( void * ) ( &start_time ) );
+   pthread_create( &process_creator, NULL, &process_creator_thread, ( void * ) &start_time );
 
-   pthread_create( &cpu_scheduler, NULL, &cpu_scheduler_thread, NULL );
+   pthread_create( &cpu_scheduler, NULL, &cpu_scheduler_thread, ( void * ) &start_time );
 
    pthread_create( &printer_scheduler,       NULL, &io_thread, ( void * ) printer );
    pthread_create( &disk_scheduler,          NULL, &io_thread, ( void * ) disk );
@@ -1048,9 +1136,10 @@ int main( int argc, char *argv[] )
    free( magnetic_tape_queue );
    free( terminated_queue );
    free( processes_list );
+    
+   show_records( );
 
    printf( "Simulator is over.\n" );
-
 
    return 0;
 }
