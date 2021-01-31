@@ -131,6 +131,8 @@ void * cpu_scheduler_thread( void *arg )
 
         #pragma endregion
 
+        #pragma region  CHECKING IF THERE IS ANY PROCESS IN THIS LIST
+
         pthread_mutex_lock( &ready_queues_lock );
 
         if( ready_pointers[ i ] <= 0 )
@@ -141,28 +143,16 @@ void * cpu_scheduler_thread( void *arg )
 
             continue;
         }
+
         pthread_mutex_unlock( &ready_queues_lock );
 
-
-        int *snapshot = get_snapshot( ready_pointers , READY_QUEUE_QNT, &ready_queues_lock );
-
-        #pragma region  CHECK HIGHER PRIORITY QUEUES
-        if( i > 0 )
-        {
-            int changed_queue;
-
-            if( any_change( ready_pointers, snapshot, i, &changed_queue, &ready_queues_lock ) )
-            {
-                printf( "CPU Scheduler :: changing queue from %d to %d.\n", i, changed_queue );
-                
-                i = changed_queue - 1;
-
-                continue;
-            }
-        }
         #pragma endregion
 
+        // taking a snapshot of how the ready queues look like
+
         pthread_mutex_lock( &ready_queues_lock );
+
+        int *snapshot = get_snapshot( ready_pointers , READY_QUEUE_QNT );
 
         printf( "CPU Scheduler :: Ready Queue No. %d with %d elements.\n", i, ready_pointers[ i ] );
         fflush( stdout );
@@ -232,29 +222,62 @@ void * cpu_scheduler_thread( void *arg )
                     running_time = inst->time;
                 }
 
-                #pragma region Saving Execution Record 
+                int ran_time      = 0;
+                int changed_queue = -1;
+
+                printf( "CPU Scheduler :: Process { PID: %d } will be executed.\n", pcb->PID );
+
+                while( running_time > 0 )
+                {
+                    #pragma region Saving Execution Record 
                 
-                pthread_mutex_lock( &cpu_container.lock );
+                    // pthread_mutex_lock( &cpu_container.lock );
                 
-                struct ExecRecord *record = cpu_container.records + cpu_container.pointer;
+                    // struct ExecRecord *record = cpu_container.records + cpu_container.pointer;
 
-                cpu_container.pointer += 1;
+                    // cpu_container.pointer += 1;
 
-                record->PID        = pcb->PID;    
-                record->start_time = time( NULL ) - start_time;
-                record->end_time   = record->start_time + running_time;
-                
-                pthread_mutex_unlock( &cpu_container.lock );
+                    // record->PID        = pcb->PID;    
+                    // record->start_time = time( NULL ) - start_time;
+                    // record->end_time   = record->start_time + running_time;
+                    
+                    // pthread_mutex_unlock( &cpu_container.lock );
 
-                #pragma endregion
+                    #pragma endregion
 
-                printf( "CPU Scheduler :: process { PID: %d } will run for %d secs.\n", pcb->PID, running_time );
+                    sleep( 1 );
 
-                sleep( inst->time );
+                    ran_time++;
+                    running_time--;
 
-                printf( "CPU Scheduler :: process { PID: %d } ran for %d secs.\n", pcb->PID, running_time );
-                
-                inst->time -= running_time;
+                    #pragma region  CHECK HIGHER PRIORITY QUEUES
+
+                    if( i > 0 )
+                    {
+                        pthread_mutex_lock( &ready_queues_lock );
+
+                        if( any_change( ready_pointers, snapshot, i, &changed_queue ) > 0 )
+                        {
+                            printf( "CPU Scheduler :: Execution of process { PID: %d } at Queue No. %d was preempted by Queue No. %d.\n",pcb->PID,  i, changed_queue );
+                            fflush( stdout );
+
+                            pthread_mutex_unlock( &ready_queues_lock );
+
+                            break;
+                        }
+
+                        pthread_mutex_unlock( &ready_queues_lock );
+                    }
+
+                    #pragma endregion 
+                }
+
+                inst->time -= ran_time;
+
+                pcb->status = READY;
+
+                printf( "CPU Scheduler :: Process { PID: %d } ran for %d seconds.\n", pcb->PID, ran_time );
+                fflush( stdout );
 
                 if( inst->time <= 0 )
                 {
@@ -264,7 +287,7 @@ void * cpu_scheduler_thread( void *arg )
         
                     if( pcb->PC >= pcb->instruction_qnt )
                     {
-                        pcb->status == TERMINATED;
+                        pcb->status = TERMINATED;
 
                         pthread_mutex_lock( &terminated_lock );
 
@@ -272,18 +295,45 @@ void * cpu_scheduler_thread( void *arg )
 
                         pthread_mutex_unlock( &terminated_lock );
 
-                        printf( "CPU Scheduler :: Process { PID: %d, PC: %d, inst: %d } has terminated.\n", pcb->PID, pcb->PC, pcb->instruction_qnt );
+                        printf( "CPU Scheduler :: Process { PID: %d } has finished.\n", pcb->PID );
                         fflush( stdout );
-
-                        break;
                     }
 
                     #pragma endregion
                 }
 
-                pcb->status = READY;
+                #pragma region  SWITCH TO HIGHER PRIORITY QUEUE IF THERE IS ANY CHANGE
+                
+                if( changed_queue >= 0 )
+                {
+                    #pragma region  PUSHING PROCESS BACK TO ITS ORIGINAL QUEUE
 
-                #pragma region  MOVE TO THE NEXT READY QUEUE
+                    pthread_mutex_lock( &ready_queues_lock );
+
+                    ready_queues[ i ][ ready_pointers[ i ] ] = pcb;
+
+                    ready_pointers[ i ] += 1;
+
+                    pthread_mutex_unlock( &ready_queues_lock );
+
+                    #pragma endregion
+
+                    printf( "CPU Scheduler :: Switching from Queue No. %d to Queue No. %d.\n", i, changed_queue );
+
+                    i = changed_queue;
+                    
+                    continue;
+                }
+
+                #pragma endregion
+
+                #pragma region  PUSHING PROCESS BACK TO SOME READY QUEUE
+
+
+                if( pcb->status == TERMINATED )
+                {
+                    continue;
+                }
 
                 pthread_mutex_lock( &ready_queues_lock );
             

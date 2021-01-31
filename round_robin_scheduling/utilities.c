@@ -103,30 +103,29 @@ void print_ready_queue_elements( struct PCB **ready_queue, int length )
     printf( "==========================\n" );
 }
 
-int * get_snapshot( int *arr, int length, pthread_mutex_t *lock_pointer )
+int * get_snapshot( int *arr, int length )
 {
     int *new_arr = malloc( length * sizeof( int ) );
     
-    pthread_mutex_lock( lock_pointer );
-
     for( int i = 0; i < length; i++ )
     {
         new_arr[ i ] = arr[ i ];
     }
 
-    pthread_mutex_unlock( lock_pointer );
-
     return new_arr;
 }
 
-int any_change( int *curr, int *snapshot, int boundary, int *changed_queue, pthread_mutex_t *lock_pointer )
+int any_change( int *curr, int *snapshot, int curr_queue, int *changed_queue )
 {
     int true = 1, false = 0;
 
-    pthread_mutex_lock( lock_pointer );
-
-    for( int i = 0; i < boundary; i++ )
+    for( int i = 0; i < curr_queue; i++ )
     {
+        if ( curr_queue == i )
+        {
+            continue;
+        }
+
         if( curr[ i ] > snapshot[ i ] )
         {
             *changed_queue = i;
@@ -135,12 +134,10 @@ int any_change( int *curr, int *snapshot, int boundary, int *changed_queue, pthr
         }
     }
 
-    pthread_mutex_unlock( lock_pointer );
-
     return false;
 }
 
-struct PCB * get_next_element( struct PCB **ready_queue, int length )
+struct PCB *get_next_element( struct PCB **ready_queue, int length )
 {
     struct PCB *pcb = ready_queue[ 0 ];
 
