@@ -3,7 +3,7 @@
 #include <libconfig.h>
 #include <pthread.h>
 
-#include "structs_&_enums.c"
+#include "types.c"
 
 int         PROCESSES_LIMIT;
 int         PROCESS_QUANTITY;
@@ -41,11 +41,10 @@ pthread_mutex_t     disk_lock;
 
 #pragma endregion
 
-// pointer matrix
 struct PCB          ***ready_queues;
 int                 *ready_pointers;
 pthread_mutex_t     ready_queues_lock;
-int                 *quantum_time_lists; 
+int                 *time_quantum_list; 
 
 struct PCB          **terminated_queue;
 int                 terminated_pointer;
@@ -71,6 +70,8 @@ void parse_configfile( char *config_file_path )
                         *queues,
                         *queue_elem;
 
+    
+
     config_init( &config );
 
     if( config_read_file( &config, config_file_path ) < 0)
@@ -81,15 +82,25 @@ void parse_configfile( char *config_file_path )
     }
 
     #pragma region PROCESS CONFIGURATION
+
+    char  *process_configuration      = "Simulator.ProcessConfiguration",
+          *process_limit              = "Limit",
+          *process_quantity           = "Quantity",
+          *process_config_list        = "List",
+          *instruction_quantity       = "Quantity",
+          *start_after                = "StartAfter",
+          *instruction_config_list    = "Instructions",
+          *instruction_type           = "Type",
+          *instruction_time           = "Time";
     
-    process_config = config_lookup( &config, "simulator.process_config" );
+    process_config = config_lookup( &config, process_configuration );
     if( process_config == NULL )
     {
         printf( "Parser :: Could not find process configuration.\n" ); 
         exit( -1 );
     }
 
-    if( config_setting_lookup_int( process_config, "limit", &PROCESSES_LIMIT ) < 0)
+    if( config_setting_lookup_int( process_config, process_limit, &PROCESSES_LIMIT ) < 0)
     {   
         printf( "Parser :: Could not read process limit.\n" );
         exit( -1 );
@@ -100,18 +111,18 @@ void parse_configfile( char *config_file_path )
         exit( -1 );
     }
 
-    if( config_setting_lookup_int( process_config, "quantity", &PROCESS_QUANTITY ) < 0)
+    if( config_setting_lookup_int( process_config, process_quantity, &PROCESS_QUANTITY ) < 0)
     {   
         printf( "Parser :: Could not read process limit.\n" );
         exit( -1 );
     }
-    else if( PROCESSES_LIMIT <= 0 )
+    else if( PROCESS_QUANTITY <= 0 )
     {
         printf( "Parser :: Invalid process quantity: %d. It should be a positive integer value.\n", PROCESS_QUANTITY );
         exit( -1 );
     }
 
-    processes_list = malloc( PROCESSES_LIMIT * sizeof( struct PCB ) );
+    processes_list = malloc( PROCESS_QUANTITY * sizeof( struct PCB ) );
 
     if( pthread_mutex_init( &processes_lock, NULL ) != 0 )
     {
@@ -119,7 +130,7 @@ void parse_configfile( char *config_file_path )
         exit( -1 );
     }
 
-    list_config = config_setting_get_member( process_config, "processes" );
+    list_config = config_setting_get_member( process_config, process_config_list );
     if( list_config == NULL )
     {
         printf( "Parser :: Could not read process list.\n" );
@@ -141,7 +152,7 @@ void parse_configfile( char *config_file_path )
             exit( -1 );
         }
 
-        if( config_setting_lookup_int( process, "qnt", &( pcb->instruction_qnt ) ) < 0 )
+        if( config_setting_lookup_int( process, instruction_quantity, &( pcb->instruction_qnt ) ) < 0 )
         {
             printf( "Parser :: Could not read quantity of instruction of %d process.\n", i + 1 );
             exit( -1 );
@@ -152,7 +163,7 @@ void parse_configfile( char *config_file_path )
             exit( -1 );
         }
 
-        if( config_setting_lookup_int( process, "start_after", &( pcb->start_after ) ) < 0 )
+        if( config_setting_lookup_int( process, start_after, &( pcb->start_after ) ) < 0 )
         {
             printf( "Parser :: Could not read start_after of %d process.\n", i + 1 );
             exit( -1 );
@@ -165,7 +176,7 @@ void parse_configfile( char *config_file_path )
 
         pcb->instructions = malloc( pcb->instruction_qnt * sizeof( struct Instruction ) );
 
-        process_instructions = config_setting_get_member( process, "instructions" );
+        process_instructions = config_setting_get_member( process, instruction_config_list );
         if( process_instructions == NULL )
         {
             printf( "Parser :: Could not read instructions member of %d process.\n", i + 1 );
@@ -185,7 +196,7 @@ void parse_configfile( char *config_file_path )
                 exit( -1 );
             }
 
-            if( config_setting_lookup_string( instruction, "type", &type ) < 0)
+            if( config_setting_lookup_string( instruction, instruction_type, &type ) < 0)
             {
                 printf( "Parser :: Couldn't read field type from process %d.\n", i+1 );
                 exit( -1 ); 
@@ -218,7 +229,7 @@ void parse_configfile( char *config_file_path )
 
                 inst->type = CPU;
 
-                if( config_setting_lookup_int( instruction, "time", &inst->time) < 0)
+                if( config_setting_lookup_int( instruction, instruction_time, &inst->time) < 0)
                 {
                     printf( "Parser :: Couldn't read field time from process %d.\n", i+1 );
                     exit( -1 ); 
@@ -256,15 +267,21 @@ void parse_configfile( char *config_file_path )
     #pragma endregion
 
     #pragma region I/O CONFIGURATION
+
+    char *io_configuration      = "Simulator.IOConfiguration",
+         *disk_time             = "DiskTime",
+         *printer_time          = "PrinterTime",
+         *magnetic_tape_time    = "MagneticTapeTime";
+
     
-    io_config = config_lookup( &config, "simulator.io_config" );
+    io_config = config_lookup( &config, io_configuration );
     if( io_config == NULL )
     {
         printf( "Parser :: Couldn't load IO configuration.\n" );
         exit( -1 );
     }
 
-    if( config_setting_lookup_int( io_config, "disk", &DISK_TIME ) < 0 )
+    if( config_setting_lookup_int( io_config, disk_time, &DISK_TIME ) < 0 )
     {
         printf( "Parser :: Couldn't read disk time from configuration.\n" );
         exit( -1 );
@@ -275,7 +292,7 @@ void parse_configfile( char *config_file_path )
         exit( -1 );
     }
 
-    if( config_setting_lookup_int( io_config, "printer", &PRINTER_TIME ) < 0 )
+    if( config_setting_lookup_int( io_config, printer_time, &PRINTER_TIME ) < 0 )
     {
         printf( "Parser :: Couldn't read printer time from configuration.\n" );
         exit( -1 );
@@ -286,7 +303,7 @@ void parse_configfile( char *config_file_path )
         exit( -1 );
     }
 
-    if( config_setting_lookup_int( io_config, "magnetic_tape", &MAGNETIC_TAPE_TIME ) < 0 )
+    if( config_setting_lookup_int( io_config, magnetic_tape_time, &MAGNETIC_TAPE_TIME ) < 0 )
     {
         printf( "Parser :: Couldn't read magnetic tape time from configuration.\n" );
         exit( -1 );
@@ -329,14 +346,19 @@ void parse_configfile( char *config_file_path )
 
     #pragma region CREATING READY QUEUES
 
-    queue_config = config_lookup( &config, "simulator.queue_config" );
+    char *ready_queues_configuration = "Simulator.ReadyQueuesConfiguration",
+         *ready_queues_quantity      = "Quantity",
+         *ready_queues_list          = "List",
+         *rq_time_quantum            = "TimeQuantum";
+
+    queue_config = config_lookup( &config, ready_queues_configuration );
     if( queue_config == NULL )
     {
         printf( "Parser :: Couldn't get queue configuration.\n" );
         exit( -1 );
     }
 
-    if( config_setting_lookup_int( queue_config, "quantity", &READY_QUEUE_QNT ) < 0 )
+    if( config_setting_lookup_int( queue_config, ready_queues_quantity, &READY_QUEUE_QNT ) < 0 )
     {
         printf( "Parser :: Couldn't read queues' quantity.\n" );
         exit( -1 );
@@ -347,7 +369,7 @@ void parse_configfile( char *config_file_path )
         exit( -1 );
     }
 
-    queues = config_setting_get_member( queue_config, "queues" );
+    queues = config_setting_get_member( queue_config, ready_queues_list );
     if( queues == NULL )
     {
         printf( "Parser :: Couldn't read queues member from config file.\n" );
@@ -355,14 +377,14 @@ void parse_configfile( char *config_file_path )
     }
 
     ready_queues        = malloc( READY_QUEUE_QNT * sizeof( struct PCB ** ) );
-    quantum_time_lists  = malloc( READY_QUEUE_QNT * sizeof( int ) );
+    time_quantum_list  = malloc( READY_QUEUE_QNT * sizeof( int ) );
     ready_pointers      = malloc( READY_QUEUE_QNT * sizeof( int ) );
 
     for( int i = 0; i < READY_QUEUE_QNT; i++ )
     {
         // struct PCB **ready_queue = ready_queues[ i ][ 0 ];
 
-        int *rq_quantum = quantum_time_lists + i;
+        int *rq_quantum = time_quantum_list + i;
 
         ready_queues[ i ] = malloc( PROCESS_QUANTITY * sizeof( struct PCB * ) );
 
@@ -375,7 +397,7 @@ void parse_configfile( char *config_file_path )
             exit( -1 );
         }
 
-        if( config_setting_lookup_int( queue_elem, "quantum_time", rq_quantum ) < 0 )
+        if( config_setting_lookup_int( queue_elem, rq_time_quantum, rq_quantum ) < 0 )
         {
             printf( "Parser :: Couldn't read quantum time of queue no. %d.\n", i + 1 );
             exit( -1 );

@@ -7,7 +7,6 @@
 
 #include "utilities.c"
 
-
 void * process_creator_thread( void *arg )
 {
     int start_time = *( (int *) arg );
@@ -44,14 +43,21 @@ void * process_creator_thread( void *arg )
         {    
             #pragma region READ PROCESS INFORMATION
 
+            pthread_mutex_lock( &processes_lock );
+
             struct PCB *pcb = processes_list + i;
 
             int pid = pcb->PID;
 
             if( pcb->status != NEW )
             {
+                pthread_mutex_unlock( &processes_lock );
+
                 continue;
             }
+
+            pthread_mutex_unlock( &processes_lock );
+
 
             if( shortest_start_after < 0 || pcb->start_after < shortest_start_after )
             {
@@ -77,24 +83,24 @@ void * process_creator_thread( void *arg )
                 
                 processes_created++;
 
-                printf( "Process Creator :: Created a new process { PID: %d, Address: %p } at %d secs.\n", pid, pcb, past_time );
+                printf( "Process Creator :: Created a new process { PID: %d, Address: %p } at %d seconds.\n", pid, pcb, past_time );
 
-                print_ready_queue_elements( ready_queues[ 0 ],  ready_pointers[ 0 ]  );
+                print_ready_queue_elements( ready_queues[ 0 ], ready_pointers[ 0 ] );
 
                 pthread_mutex_unlock( &ready_queues_lock );
-
             }
 
             #pragma endregion 
         }
 
-        int past_time = time( NULL ) - start_time;
+        int past_time   = time( NULL ) - start_time;
 
-        // sleep until the next process
-        int sleep_time = shortest_start_after - past_time;
+        int sleep_time  = shortest_start_after - past_time;
+
         if ( sleep_time > 0 )
         {
-            printf( "Process Creator :: Waiting for %d secs until next process can be created.\n", sleep_time );
+            printf( "Process Creator :: Sleeping for %d seconds until next process can be created.\n", sleep_time );
+
             sleep( sleep_time );
         }
     }
@@ -125,10 +131,22 @@ void * cpu_scheduler_thread( void *arg )
 
         #pragma endregion
 
+        pthread_mutex_lock( &ready_queues_lock );
+
+        if( ready_pointers[ i ] <= 0 )
+        {
+            pthread_mutex_unlock( &ready_queues_lock );
+
+            i = ( i + 1 ) % READY_QUEUE_QNT;
+
+            continue;
+        }
+        pthread_mutex_unlock( &ready_queues_lock );
+
+
         int *snapshot = get_snapshot( ready_pointers , READY_QUEUE_QNT, &ready_queues_lock );
 
         #pragma region  CHECK HIGHER PRIORITY QUEUES
-
         if( i > 0 )
         {
             int changed_queue;
@@ -142,21 +160,11 @@ void * cpu_scheduler_thread( void *arg )
                 continue;
             }
         }
-        
         #pragma endregion
 
         pthread_mutex_lock( &ready_queues_lock );
 
-        if( ready_pointers[ i ] <= 0 )
-        {
-            pthread_mutex_unlock( &ready_queues_lock );
-
-            i = ( i + 1 ) % READY_QUEUE_QNT;
-
-            continue;
-        }
-
-        printf( "CPU Scheduler :: processing ready queue no. %d with %d elements.\n", i, ready_pointers[ i ] );
+        printf( "CPU Scheduler :: Ready Queue No. %d with %d elements.\n", i, ready_pointers[ i ] );
         fflush( stdout );
 
         print_ready_queue_elements( ready_queues[ i ], ready_pointers[ i ] );
@@ -217,9 +225,9 @@ void * cpu_scheduler_thread( void *arg )
             {
                 pcb->status = RUNNING;
 
-                int running_time = quantum_time_lists[ i ];
+                int running_time = time_quantum_list[ i ];
 
-                if( inst->time <= quantum_time_lists[ i ] )
+                if( inst->time <= time_quantum_list[ i ] )
                 {
                     running_time = inst->time;
                 }
@@ -227,11 +235,6 @@ void * cpu_scheduler_thread( void *arg )
                 #pragma region Saving Execution Record 
                 
                 pthread_mutex_lock( &cpu_container.lock );
-
-                // if( cpu_container.pointer >= cpu_container.size )
-                // {
-                //     increase_size( &cpu_container );
-                // }
                 
                 struct ExecRecord *record = cpu_container.records + cpu_container.pointer;
 
@@ -436,9 +439,7 @@ void * io_thread( void *arg )
 
 int main( int argc, char *argv[] )
 {
-   char *file_name = "./configfile_2.txt";
-
-   parse_configfile( file_name );
+   parse_configfile( "./ConfigFile2.txt" );
 
    print_configuration( processes_list, PROCESS_QUANTITY, PROCESSES_LIMIT, READY_QUEUE_QNT, DISK_TIME, PRINTER_TIME, MAGNETIC_TAPE_TIME );
 
@@ -449,9 +450,7 @@ int main( int argc, char *argv[] )
         *magnetic_tape   =     "Magnetic Tape";
 
    pthread_create( &process_creator, NULL, &process_creator_thread, ( void * ) &start_time );
-
-   pthread_create( &cpu_scheduler, NULL, &cpu_scheduler_thread, ( void * ) &start_time );
-
+   pthread_create( &cpu_scheduler,   NULL, &cpu_scheduler_thread,   ( void * ) &start_time );
    pthread_create( &printer_scheduler,       NULL, &io_thread, ( void * ) printer );
    pthread_create( &disk_scheduler,          NULL, &io_thread, ( void * ) disk );
    pthread_create( &magnetic_tape_scheduler, NULL, &io_thread, ( void * ) magnetic_tape );

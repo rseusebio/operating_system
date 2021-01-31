@@ -24,3 +24,11 @@ o Processos novos - entram na fila de alta prioridade;
 o Processos que retornam de I/O – dependente do tipo de I/O solicitado;
 o Processos que sofreram preempção – retornam na fila de baixa prioridade.
 OBS: As premissas estabelecidas pelo grupo devem estar explícitas no relatório.
+
+
+
+TODO:
+
+- Count waiting time for each process 
+    Waiting time: time spent not processing before when you are ready
+- count average waiting time ( which is the sum of all waiting times )

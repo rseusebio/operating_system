@@ -1,0 +1,202 @@
+Simulator:
+{
+    ProcessConfiguration:
+    {
+        Limit: 10;
+        Quantity: 8;
+        List:
+        (
+            {
+                Quantity: 4;
+                StartAfter: 3; 
+                Instructions: 
+                (
+                    {
+                        Type: "CPU",
+                        Time: 11,
+                    },
+                    {
+                        Type: "PRINTER"
+                    },
+                    {
+                        Type: "CPU", 
+                        Time: 5
+                    },
+                    {
+                        Type: "MAGNETIC_TAPE"
+                    }
+                );
+            },
+            {
+                Quantity: 3;
+                StartAfter: 1; 
+                Instructions: 
+                (
+                    {
+                        Type: "MAGNETIC_TAPE"
+                    },
+                    {
+                        Type: "CPU", 
+                        Time: 5
+                    },
+                    {
+                        Type: "CPU", 
+                        Time: 5
+                    }
+                );
+            },
+            {
+                Quantity: 5;
+                StartAfter: 0;
+                Instructions: 
+                (
+                    {
+                        Type: "CPU", 
+                        Time: 3
+                    },
+                    {
+                        Type: "DISK"
+                    }, 
+                    {
+                        Type: "CPU", 
+                        Time: 3
+                    },
+                    {
+                        Type: "PRINTER"
+                    }, 
+                    {
+                        Type: "CPU",
+                        Time: 1
+                    }
+                );
+            },
+            {   
+                Quantity: 3;
+                StartAfter: 5;
+                Instructions:
+                (
+                    { 
+                        Type: "CPU",
+                        Time: 3
+                    },
+                    {
+                        Type: "MAGNETIC_TAPE"
+                    },
+                    {
+                        Type: "CPU", 
+                        Time: 4
+                    }
+                );
+            },
+            {   
+                Quantity: 4;
+                StartAfter: 0;
+                Instructions:
+                (
+                    { 
+                        Type: "CPU",
+                        Time: 7
+                    },
+                    {
+                        Type: "MAGNETIC_TAPE"
+                    },
+                    {
+                        Type: "CPU", 
+                        Time: 5
+                    },
+                    {
+                        Type: "DISK"
+                    }
+                );
+            },
+            {   
+                Quantity: 4;
+                StartAfter: 0;
+                Instructions:
+                (
+                    { 
+                        Type: "CPU",
+                        Time: 2
+                    },
+                    {
+                        Type: "MAGNETIC_TAPE"
+                    },
+                    {
+                        Type: "CPU", 
+                        Time: 3
+                    },
+                    {
+                        Type: "PRINTER"
+                    }
+                );
+            },
+            {   
+                Quantity: 3;
+                StartAfter: 0;
+                Instructions:
+                (
+                    { 
+                        Type: "CPU",
+                        Time: 5
+                    },
+                    {
+                        Type: "DISK"
+                    },
+                    {
+                        Type: "CPU", 
+                        Time: 4
+                    }
+                );
+            },
+            {   
+                Quantity: 3;
+                StartAfter: 0;
+                Instructions:
+                (
+                    { 
+                        Type: "CPU",
+                        Time: 5
+                    },
+                    {
+                        Type: "PRINTER"
+                    },
+                    {
+                        Type: "CPU", 
+                        Time: 6
+                    }
+                );
+            }
+        );
+    };
+    IOConfiguration:
+    {
+        DiskTime: 3;
+        PrinterTime: 5;
+        MagneticTapeTime: 7;
+    };
+    ReadyQueuesConfiguration:
+    {
+        Quantity: 6;
+        List:
+        (
+            {
+                TimeQuantum: 2
+            },
+            {
+                TimeQuantum: 4
+            },
+            {
+                TimeQuantum: 8
+            },
+            {
+                TimeQuantum: 16
+            },
+            {
+                TimeQuantum: 32
+            },
+            {
+                TimeQuantum: 64
+            }
+        );
+    }
+};

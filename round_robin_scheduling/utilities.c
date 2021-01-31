@@ -103,7 +103,7 @@ void print_ready_queue_elements( struct PCB **ready_queue, int length )
     printf( "==========================\n" );
 }
 
-int * get_snapshot( int * arr, int length, pthread_mutex_t *lock_pointer )
+int * get_snapshot( int *arr, int length, pthread_mutex_t *lock_pointer )
 {
     int *new_arr = malloc( length * sizeof( int ) );
     

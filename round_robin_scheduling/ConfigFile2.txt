@@ -1,0 +1,90 @@
+Simulator:
+{
+    ProcessConfiguration:
+    {
+        Limit: 5;
+        Quantity: 3;
+        List:
+        (
+            {
+                Quantity: 4;
+                StartAfter: 3; 
+                Instructions: 
+                (
+                    {
+                        Type: "CPU",
+                        Time: 3,
+                    },
+                    {
+                        Type: "PRINTER"
+                    },
+                    {
+                        Type: "CPU", 
+                        Time: 2
+                    },
+                    {
+                        Type: "MAGNETIC_TAPE"
+                    }
+                );
+            },
+            {
+                Quantity: 4;
+                StartAfter: 1; 
+                Instructions: 
+                (
+                    {
+                        Type: "MAGNETIC_TAPE"
+                    },
+                    {
+                        Type: "CPU", 
+                        Time: 2
+                    },
+                    {
+                        Type: "DISK", 
+                        Time: 5
+                    },
+                    {
+                        Type: "CPU", 
+                        Time: 4
+                    }
+                );
+            },
+            {
+                Quantity: 2;
+                StartAfter: 0;
+                Instructions: 
+                (
+                    {
+                        Type: "CPU", 
+                        Time: 3
+                    },
+                    {
+                        Type: "DISK"
+                    }
+                );
+            }
+        );
+    };
+    IOConfiguration:
+    {
+        DiskTime: 3;
+        PrinterTime: 4;
+        MagneticTapeTime: 5;
+    };
+    ReadyQueuesConfiguration:
+    {
+        Quantity: 3;
+        List:
+        (
+            {
+                TimeQuantum: 2
+            },
+            {
+                TimeQuantum: 4
+            },
+            {
+                TimeQuantum: 8
+            }
+        );
+    }
+};
