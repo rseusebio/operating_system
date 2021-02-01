@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "config_parser.c"
 
@@ -149,18 +150,83 @@ struct PCB *get_next_element( struct PCB **ready_queue, int length )
     return pcb;
 }
 
-void show_records( struct RecordContainer *cpu_container )
+void save_records( char *file_path )
 {
-    printf( "CPU Records: \n" );
+    FILE *f = fopen( file_path, "w" );
 
-    for( int i = 0; i < cpu_container->pointer; i++ )
+    fprintf( f, "{ \"cpu_records\": [ " );
+
+    for( int i = 0; i < cpu_container.pointer; i++ )
     {
-        struct ExecRecord *record = cpu_container->records + i;
+        struct ExecRecord *record = cpu_container.records + i;
 
-        printf( "[ \"%d\", getDate( %d ), getDate( %d ) ]\n", record->PID, record->start_time, record->end_time );
+        if( i == cpu_container.pointer - 1 )
+        {
+            fprintf( f, "[ \"%d\", %d, %d ] ]", record->PID, record->start_time, record->end_time );
+        }
+        else 
+        {
+            fprintf( f, "[ \"%d\", %d, %d ],", record->PID, record->start_time, record->end_time );
+        }
     }
 
-    printf( "============================\n" );
+    fprintf( f, ", \"print_records\": [ " );
+
+    for( int i = 0; i < printer_container.pointer; i++ )
+    {
+        char *temp = ( char * ) malloc( 60 * sizeof( char ) );
+
+        struct ExecRecord *record = printer_container.records + i;
+
+        if( i == printer_container.pointer - 1 )
+        {
+            fprintf( f, "[ \"%d\", %d, %d ] ]", record->PID, record->start_time, record->end_time );
+        }
+        else 
+        {
+            fprintf( f, "[ \"%d\", %d, %d ],", record->PID, record->start_time, record->end_time );
+        }
+    }
+
+    fprintf( f, ", \"disk_records\": [ " );
+
+    for( int i = 0; i < disk_container.pointer; i++ )
+    {
+        char *temp = ( char * ) malloc( 60 * sizeof( char ) );
+
+        struct ExecRecord *record = disk_container.records + i;
+
+        if( i == disk_container.pointer - 1 )
+        {
+            fprintf( f, "[ \"%d\", %d, %d ] ]", record->PID, record->start_time, record->end_time );
+        }
+        else 
+        {
+            fprintf( f, "[ \"%d\", %d, %d ],", record->PID, record->start_time, record->end_time );
+        }
+    }
+
+    fprintf( f, ", \"magnetic_records\": [ " );
+
+    for( int i = 0; i < magnetic_tape_container.pointer; i++ )
+    {
+        char *temp = ( char * ) malloc( 60 * sizeof( char ) );
+
+        struct ExecRecord *record = magnetic_tape_container.records + i;
+
+        if( i == magnetic_tape_container.pointer - 1 )
+        {
+            fprintf( f, "[ \"%d\", %d, %d ] ]", record->PID, record->start_time, record->end_time );
+        }
+        else 
+        {
+            fprintf( f, "[ \"%d\", %d, %d ],", record->PID, record->start_time, record->end_time );
+        }
+    }
+
+    fprintf( f, "} " );
+
+    fclose( f );
 }
 
 void print_configuration( struct PCB *processes_list, int PROCESS_QUANTITY, int PROCESSES_LIMIT, int READY_QUEUE_QNT, int DISK_TIME, int PRINTER_TIME, int MAGNETIC_TAPE_TIME ) 

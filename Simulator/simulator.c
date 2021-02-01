@@ -58,7 +58,6 @@ void * process_creator_thread( void *arg )
 
             pthread_mutex_unlock( &processes_lock );
 
-
             if( shortest_start_after < 0 || pcb->start_after < shortest_start_after )
             {
                 shortest_start_after = pcb->start_after;
@@ -83,7 +82,7 @@ void * process_creator_thread( void *arg )
                 
                 processes_created++;
 
-                printf( "Process Creator :: Created a new process { PID: %d, Address: %p } at %d seconds.\n", pid, pcb, past_time );
+                printf( "Process Creator :: Created a new process { PID: %d } at %d second(s).\n", pid, past_time );
 
                 print_ready_queue_elements( ready_queues[ 0 ], ready_pointers[ 0 ] );
 
@@ -99,7 +98,7 @@ void * process_creator_thread( void *arg )
 
         if ( sleep_time > 0 )
         {
-            printf( "Process Creator :: Sleeping for %d seconds until next process can be created.\n", sleep_time );
+            printf( "Process Creator :: Sleeping for %d second(s) until next process can be created.\n", sleep_time );
 
             sleep( sleep_time );
         }
@@ -230,19 +229,15 @@ void * cpu_scheduler_thread( void *arg )
                 while( running_time > 0 )
                 {
                     #pragma region Saving Execution Record 
-                
-                    // pthread_mutex_lock( &cpu_container.lock );
-                
-                    // struct ExecRecord *record = cpu_container.records + cpu_container.pointer;
+                                
+                    struct ExecRecord *record = cpu_container.records + cpu_container.pointer;
 
-                    // cpu_container.pointer += 1;
+                    cpu_container.pointer += 1;
 
-                    // record->PID        = pcb->PID;    
-                    // record->start_time = time( NULL ) - start_time;
-                    // record->end_time   = record->start_time + running_time;
+                    record->PID        = pcb->PID;    
+                    record->start_time = time( NULL ) - start_time;
+                    record->end_time   = record->start_time + 1;
                     
-                    // pthread_mutex_unlock( &cpu_container.lock );
-
                     #pragma endregion
 
                     sleep( 1 );
@@ -276,7 +271,7 @@ void * cpu_scheduler_thread( void *arg )
 
                 pcb->status = READY;
 
-                printf( "CPU Scheduler :: Process { PID: %d } ran for %d seconds.\n", pcb->PID, ran_time );
+                printf( "CPU Scheduler :: Process { PID: %d } ran for %d second(s).\n", pcb->PID, ran_time );
                 fflush( stdout );
 
                 if( inst->time <= 0 )
@@ -308,13 +303,16 @@ void * cpu_scheduler_thread( void *arg )
                 {
                     #pragma region  PUSHING PROCESS BACK TO ITS ORIGINAL QUEUE
 
-                    pthread_mutex_lock( &ready_queues_lock );
+                    if( pcb->status != TERMINATED )
+                    {
+                        pthread_mutex_lock( &ready_queues_lock );
 
-                    ready_queues[ i ][ ready_pointers[ i ] ] = pcb;
+                        ready_queues[ i ][ ready_pointers[ i ] ] = pcb;
 
-                    ready_pointers[ i ] += 1;
+                        ready_pointers[ i ] += 1;
 
-                    pthread_mutex_unlock( &ready_queues_lock );
+                        pthread_mutex_unlock( &ready_queues_lock );
+                    }
 
                     #pragma endregion
 
@@ -328,7 +326,6 @@ void * cpu_scheduler_thread( void *arg )
                 #pragma endregion
 
                 #pragma region  PUSHING PROCESS BACK TO SOME READY QUEUE
-
 
                 if( pcb->status == TERMINATED )
                 {
@@ -373,10 +370,11 @@ void * io_thread( void *arg )
 
     char *io_type = (char *) arg;
 
-    pthread_mutex_t     *io_lock; 
-    struct PCB          **io_queue;
-    int                 *io_queue_pointer;
-    int                 blocked_time;
+    pthread_mutex_t         *io_lock; 
+    struct PCB              **io_queue;
+    int                     *io_queue_pointer;
+    int                     blocked_time;
+    struct RecordContainer  *record_container;
 
     #pragma region SETTING IO TYPE
 
@@ -386,6 +384,7 @@ void * io_thread( void *arg )
         io_lock          =  &disk_lock;
         io_queue_pointer =  &disk_queue_pointer;
         blocked_time     =  DISK_TIME;
+        record_container =  &disk_container;
     }
     else if( strcmp( io_type, "Printer" ) == 0 )
     {
@@ -393,6 +392,7 @@ void * io_thread( void *arg )
         io_lock          =  &printer_lock;
         io_queue_pointer =  &printer_queue_pointer;
         blocked_time     =  PRINTER_TIME;
+        record_container =  &printer_container;
     }
     else if( strcmp( io_type, "Magnetic Tape" ) == 0 )
     {   
@@ -400,10 +400,12 @@ void * io_thread( void *arg )
         io_lock          =  &magnetic_tape_lock;
         io_queue_pointer =  &magnetic_tape_pointer;
         blocked_time     =  MAGNETIC_TAPE_TIME;
+        record_container =  &magnetic_tape_container;
     }
     else 
     {
         printf( "Invalid IO type: %s. Exiting system...\n", io_type );
+
         exit( -1 );
     }
 
@@ -441,8 +443,20 @@ void * io_thread( void *arg )
 
         pthread_mutex_unlock( io_lock );
 
-        printf( "%s :: blocking for process { PID: %d } for %d secs.\n", io_type, pcb->PID, blocked_time );
+        printf( "%s :: Blocking process { PID: %d } for %d second(s).\n", io_type, pcb->PID, blocked_time );
         fflush( stdout );
+
+        #pragma region Saving Execution Record 
+                    
+        struct ExecRecord *record = record_container->records + record_container->pointer;
+
+        record_container->pointer += 1;
+
+        record->PID        = pcb->PID;    
+        record->start_time = time( NULL ) - start_time;
+        record->end_time   = record->start_time + blocked_time;
+        
+        #pragma endregion
 
         sleep( blocked_time );
 
@@ -452,7 +466,7 @@ void * io_thread( void *arg )
         {
             pcb->status = TERMINATED;
 
-            printf( "%s :: process { PID: %d } has blocked for %d secs and has terminated.\n", io_type, pcb->PID, blocked_time );
+            printf( "%s :: process { PID: %d } has blocked for %d second(s) and has terminated.\n", io_type, pcb->PID, blocked_time );
             fflush( stdout );
 
             pthread_mutex_lock( &terminated_lock );
@@ -472,7 +486,7 @@ void * io_thread( void *arg )
 
             pcb->status = READY;
 
-            printf( "%s :: process { PID: %d } blocked for %d secs and is now ready at queue no. %d.\n", io_type, pcb->PID, blocked_time, ready_queue_index );
+            printf( "%s :: process { PID: %d } blocked for %d second(s) and is now ready at queue no. %d.\n", io_type, pcb->PID, blocked_time, ready_queue_index );
             fflush( stdout );
 
             pthread_mutex_lock( &ready_queues_lock );
@@ -526,10 +540,14 @@ int main( int argc, char *argv[] )
    free( magnetic_tape_queue );
    free( terminated_queue );
    free( processes_list );
-    
-   show_records( &cpu_container );
 
-   printf( "Simulator is over.\n" );
+   printf( "Saving records...\n" );
+    
+   save_records( "../charts/src/simulation_records.json" );
+
+   printf( "\nSIMULATOR IS OVER.\n" );
+
+   system( "cd ../charts && npm run start " );
 
    return 0;
 }

@@ -21,7 +21,10 @@ pthread_t       disk_scheduler;
 struct PCB          *processes_list;
 pthread_mutex_t     processes_lock;
 
-struct RecordContainer cpu_container;
+struct RecordContainer  cpu_container;
+struct RecordContainer  disk_container;
+struct RecordContainer  printer_container;
+struct RecordContainer  magnetic_tape_container;
 
 #pragma region  I/O QUEUES
 
@@ -255,15 +258,22 @@ void parse_configfile( char *config_file_path )
     
     printf( "Parser :: CPU executions: %d; Greatest CPU time: %d seconds.\n", CPU_execs, greatest_cpu_time );
 
-    cpu_container.records = malloc( CPU_execs * greatest_cpu_time * sizeof( struct ExecRecord ) );
-    cpu_container.pointer = 0;
-    cpu_container.size    = 0;
-    if( pthread_mutex_init( &cpu_container.lock, NULL ) != 0 )
-    {   
-        printf( "Parser :: Couldn't init cpu_container's lock.\n" );
-        exit( -1 );
-    }    
-    
+    cpu_container.records =  malloc( CPU_execs * greatest_cpu_time * sizeof( struct ExecRecord ) );
+    cpu_container.pointer =  0;
+    cpu_container.size    =  0;
+
+    disk_container.records =  malloc( CPU_execs * greatest_cpu_time * sizeof( struct ExecRecord ) );
+    disk_container.pointer =  0;
+    disk_container.size    =  0;
+
+    printer_container.records =  malloc( CPU_execs * greatest_cpu_time * sizeof( struct ExecRecord ) );
+    printer_container.pointer =  0;
+    printer_container.size    =  0;
+
+    magnetic_tape_container.records =  malloc( CPU_execs * greatest_cpu_time * sizeof( struct ExecRecord ) );
+    magnetic_tape_container.pointer =  0;
+    magnetic_tape_container.size    =  0;
+
     #pragma endregion
 
     #pragma region I/O CONFIGURATION
